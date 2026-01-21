@@ -1,7 +1,7 @@
 
 import React, { useState, useRef, useEffect } from 'react';
 import { UserProfile, AnalysisResponse, Scheme, AuthState, AIAgentLog } from './types';
-import { RAJASTHAN_DISTRICTS, CATEGORIES, BENEFICIARY_TYPES, GENDER, MARITAL_STATUS, AREA_TYPE, YES_NO } from './constants';
+import { RAJASTHAN_DISTRICTS, TSP_DISTRICTS, CATEGORIES, BENEFICIARY_TYPES, GENDER, MARITAL_STATUS, AREA_TYPE, YES_NO } from './constants';
 import FormSection from './components/FormSection';
 import { analyzeEligibility, fetchMasterSchemes, proposeSystemImprovement } from './services/geminiService';
 import { dbService } from './services/dbService';
@@ -83,6 +83,26 @@ const App: React.FC = () => {
   const [currentProposal, setCurrentProposal] = useState<string | null>(null);
 
   const resultRef = useRef<HTMLDivElement>(null);
+
+  // Logical Form Dependencies
+  useEffect(() => {
+    // If Male is selected, filter out female-only options
+    if (profile.gender === 'Male') {
+      const excluded = ['Widow', 'Woman', 'Girl Child'];
+      if (excluded.includes(profile.beneficiary_type)) {
+        setProfile(prev => ({ ...prev, beneficiary_type: 'Student' }));
+      }
+      if (profile.marital_status === 'Widowed') {
+        setProfile(prev => ({ ...prev, marital_status: 'Single' }));
+      }
+    }
+
+    // If a non-TSP district is selected, lock TSP Area to "No"
+    const isTspDistrict = TSP_DISTRICTS.includes(profile.district);
+    if (!isTspDistrict && profile.is_tsp_area === 'Yes') {
+      setProfile(prev => ({ ...prev, is_tsp_area: 'No' }));
+    }
+  }, [profile.gender, profile.district]);
 
   useEffect(() => {
     const init = async () => {
@@ -172,6 +192,20 @@ const App: React.FC = () => {
     setLoading(false);
   };
 
+  const filteredBeneficiaries = BENEFICIARY_TYPES.filter(type => {
+    if (profile.gender === 'Male') {
+      return !['Widow', 'Woman', 'Girl Child'].includes(type);
+    }
+    return true;
+  });
+
+  const filteredAreaTypes = AREA_TYPE.filter(type => {
+    if (!TSP_DISTRICTS.includes(profile.district)) {
+      return !['Tribal', 'TSP'].includes(type);
+    }
+    return true;
+  });
+
   return (
     <div className="min-h-screen bg-[#FDFDFD] font-sans selection:bg-orange-100">
       <header className="bg-white/80 backdrop-blur-xl border-b border-slate-100 sticky top-0 z-50 py-3 px-4">
@@ -224,13 +258,13 @@ const App: React.FC = () => {
                         <label className="block space-y-1">
                           <span className="text-[10px] font-black text-slate-400 uppercase tracking-widest">शादी की स्थिति</span>
                           <select value={profile.marital_status} onChange={e => setProfile({...profile, marital_status: e.target.value})} className="w-full p-3.5 bg-slate-50 border-0 rounded-2xl font-bold text-xs ring-1 ring-slate-100 focus:ring-2 focus:ring-orange-500">
-                            {MARITAL_STATUS.map(s => <option key={s} value={s}>{s}</option>)}
+                            {MARITAL_STATUS.filter(m => !(profile.gender === 'Male' && m === 'Widowed')).map(s => <option key={s} value={s}>{s === 'Widowed' && profile.gender === 'Male' ? 'Widower' : s}</option>)}
                           </select>
                         </label>
                         <label className="block space-y-1">
                           <span className="text-[10px] font-black text-slate-400 uppercase tracking-widest">लाभार्थी श्रेणी</span>
                           <select value={profile.beneficiary_type} onChange={e => setProfile({...profile, beneficiary_type: e.target.value})} className="w-full p-3.5 bg-slate-50 border-0 rounded-2xl font-bold text-xs ring-1 ring-slate-100 focus:ring-2 focus:ring-orange-500">
-                            {BENEFICIARY_TYPES.map(b => <option key={b} value={b}>{b}</option>)}
+                            {filteredBeneficiaries.map(b => <option key={b} value={b}>{b}</option>)}
                           </select>
                         </label>
                       </div>
@@ -247,14 +281,20 @@ const App: React.FC = () => {
                         <label className="block space-y-1">
                           <span className="text-[10px] font-black text-slate-400 uppercase tracking-widest">क्षेत्र का प्रकार</span>
                           <select value={profile.rural_or_urban} onChange={e => setProfile({...profile, rural_or_urban: e.target.value})} className="w-full p-3.5 bg-slate-50 border-0 rounded-2xl font-bold text-xs ring-1 ring-slate-100 focus:ring-2 focus:ring-orange-500">
-                            {AREA_TYPE.map(a => <option key={a} value={a}>{a}</option>)}
+                            {filteredAreaTypes.map(a => <option key={a} value={a}>{a}</option>)}
                           </select>
                         </label>
                         <label className="block space-y-1">
                           <span className="text-[10px] font-black text-slate-400 uppercase tracking-widest">TSP/Tribal Area</span>
-                          <select value={profile.is_tsp_area} onChange={e => setProfile({...profile, is_tsp_area: e.target.value})} className="w-full p-3.5 bg-slate-50 border-0 rounded-2xl font-bold text-xs ring-1 ring-slate-100 focus:ring-2 focus:ring-orange-500">
+                          <select 
+                            value={profile.is_tsp_area} 
+                            disabled={!TSP_DISTRICTS.includes(profile.district)}
+                            onChange={e => setProfile({...profile, is_tsp_area: e.target.value})} 
+                            className={`w-full p-3.5 border-0 rounded-2xl font-bold text-xs ring-1 ring-slate-100 focus:ring-2 focus:ring-orange-500 ${!TSP_DISTRICTS.includes(profile.district) ? 'bg-slate-100 text-slate-400 cursor-not-allowed' : 'bg-slate-50'}`}
+                          >
                             {YES_NO.map(y => <option key={y} value={y}>{y}</option>)}
                           </select>
+                          {!TSP_DISTRICTS.includes(profile.district) && <p className="text-[8px] font-bold text-slate-400 italic">This district does not have TSP areas.</p>}
                         </label>
                       </div>
                     </FormSection>
@@ -273,11 +313,27 @@ const App: React.FC = () => {
                         </label>
                         <div className="flex flex-col gap-2">
                           <label className="flex items-center gap-2 p-3 bg-slate-50 rounded-xl border border-slate-100 cursor-pointer">
-                            <input type="checkbox" checked={profile.bpl === 'Yes'} onChange={e => setProfile({...profile, bpl: e.target.checked ? 'Yes' : 'No'})} className="rounded text-orange-600" />
+                            <div className={`relative inline-flex h-5 w-9 items-center rounded-full transition-colors focus:outline-none ring-offset-2 focus:ring-2 focus:ring-orange-500 ${profile.bpl === 'Yes' ? 'bg-orange-600' : 'bg-slate-200'}`}>
+                              <input 
+                                type="checkbox" 
+                                className="sr-only"
+                                checked={profile.bpl === 'Yes'} 
+                                onChange={e => setProfile({...profile, bpl: e.target.checked ? 'Yes' : 'No'})} 
+                              />
+                              <span className={`inline-block h-4 w-4 transform rounded-full bg-white transition-transform ${profile.bpl === 'Yes' ? 'translate-x-4.5' : 'translate-x-0.5'}`} />
+                            </div>
                             <span className="text-[10px] font-black text-slate-500 uppercase">BPL कार्ड?</span>
                           </label>
                           <label className="flex items-center gap-2 p-3 bg-slate-50 rounded-xl border border-slate-100 cursor-pointer">
-                            <input type="checkbox" checked={profile.labour_card === 'Yes'} onChange={e => setProfile({...profile, labour_card: e.target.checked ? 'Yes' : 'No'})} className="rounded text-orange-600" />
+                             <div className={`relative inline-flex h-5 w-9 items-center rounded-full transition-colors focus:outline-none ring-offset-2 focus:ring-2 focus:ring-orange-500 ${profile.labour_card === 'Yes' ? 'bg-orange-600' : 'bg-slate-200'}`}>
+                              <input 
+                                type="checkbox" 
+                                className="sr-only"
+                                checked={profile.labour_card === 'Yes'} 
+                                onChange={e => setProfile({...profile, labour_card: e.target.checked ? 'Yes' : 'No'})} 
+                              />
+                              <span className={`inline-block h-4 w-4 transform rounded-full bg-white transition-transform ${profile.labour_card === 'Yes' ? 'translate-x-4.5' : 'translate-x-0.5'}`} />
+                            </div>
                             <span className="text-[10px] font-black text-slate-500 uppercase">श्रम कार्ड?</span>
                           </label>
                         </div>

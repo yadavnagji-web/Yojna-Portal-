@@ -8,6 +8,9 @@ export const RAJASTHAN_DISTRICTS = [
   "Sikar", "Sirohi", "Sri Ganganagar", "Tonk", "Udaipur"
 ];
 
+// Districts that have TSP (Tribal Sub-Plan) areas in Rajasthan
+export const TSP_DISTRICTS = ["Banswara", "Dungarpur", "Pratapgarh", "Udaipur", "Sirohi", "Rajsamand", "Chittorgarh", "Pali"];
+
 export const CATEGORIES = ["General", "OBC", "SC", "ST", "EWS", "MBC"];
 
 export const BENEFICIARY_TYPES = [
